@@ -1,0 +1,11 @@
+/tmp
+/results
+/data/*
+!/data/reference_mod.GTF
+!/data/primers.bed
+!/data/df_pair_info
+!/data/reference.fasta
+!/data/reference_HK68_seg.fasta
+/archive
+/FastQC
+

@@ -130,7 +130,7 @@ df_plot_all$sig_label <- sapply(df_plot_all$p_value_VACCINATEDvsNAIVE, function(
 	if(is.na(x)){return(NA)}
 	if(x>0.05){return(NA)}
 	if(x>0.01){return("*")}
-	if(>0.001){return("**")}
+	if(x>0.001){return("**")}
 	if(x<=0.001){return("***")}
 })
 df_t <- df_plot_all %>% group_by(product, name, passage) %>% summarise(y=max(mean+sd)) 

@@ -10,10 +10,10 @@ ref_seq <- readDNAStringSet("../data/reference_HK68_seg.fasta")
 stop_t <- cumsum(width(ref_seq))
 df_pos <- tibble(segment = names(ref_seq), start = c(1,stop_t[-length(stop_t)]+1), stop = stop_t)
 df_pos$width <- df_pos$stop - df_pos$start + 1
+# write_csv(df_pos, "../data/")
 stopifnot(df_pos$width == width(ref_seq))
 
 # use snpgenie to estimat gene diversity
-# https://github.com/chasewnelson/SNPGenie#output
 dir.create("../results/snpgenie")
 ## prepare GTF
 df_gtf <- read_tsv("../data/reference_seg.GTF", col_names = F)
@@ -123,14 +123,23 @@ label_t <- c("piN Naive"=expression(pi[N]~(Naive)),
 
 df_stat <- df_plot_all_raw %>% group_by(product, name, passage) %>% mutate(value=as.numeric(value)) %>% 
 	summarise(p_value_VACCINATEDvsNAIVE = t.test(value[type2=="Vaccinated"], value[type2=="Naive"])$p.value) %>% 
-	ungroup()
+	ungroup() 
+df_stat_2 <- df_plot_all_raw %>% group_by(product, passage, type2) %>% mutate(value=as.numeric(value)) %>%  summarise(p_value_piNvspiS = t.test(value[name=="piN"], value[name=="piS"])$p.value)
 
 df_plot_all <- left_join(df_plot_all, df_stat)
+df_plot_all <- left_join(df_plot_all, df_stat_2)
 df_plot_all$sig_label <- sapply(df_plot_all$p_value_VACCINATEDvsNAIVE, function(x){
 	if(is.na(x)){return(NA)}
 	if(x>0.05){return(NA)}
-	if(x>0.01){return("*")}
-	if(x>0.001){return("**")}
+	if(x<=0.05 & x>0.01){return("*")}
+	if(x<=0.01 & x>0.001){return("**")}
+	if(x<=0.001){return("***")}
+})
+df_plot_all$sig_label_2 <- sapply(df_plot_all$p_value_piNvspiS, function(x){
+	if(is.na(x)){return(NA)}
+	if(x>0.05){return(NA)}
+	if(x<=0.05 & x>0.01){return("*")}
+	if(x<=0.01 & x>0.001){return("**")}
 	if(x<=0.001){return("***")}
 })
 df_t <- df_plot_all %>% group_by(product, name, passage) %>% summarise(y=max(mean+sd)) 
@@ -156,11 +165,93 @@ ggplot(df_plot_all, aes(x=group, y=mean, fill = group))+
 	theme_bw()+
 	xlab("Gene")+
 	ylab("Nucleotide diversity")+
-	theme(legend.title = element_blank(),
-		axis.title.x=element_blank(),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank())+
+	theme(legend.title = element_blank())+
 	NULL
 
 ggsave("../results/diversity.pdf", width=8*sqrt(2), height=8)
 save_pptx("../results/diversity.pptx", width=8*sqrt(2), height=8)
+
+# full genome
+ggplot(df_plot_all %>% filter(product=="Overall"), aes(x=group, y=mean, fill = group))+
+	geom_bar(stat="identity", position=position_dodge())+
+  	geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, position=position_dodge(.9))+
+	geom_segment(
+		data = annotation_df %>% filter(product=="Overall"),
+		mapping = aes(x=start, xend=end, y=y+nudge_y, yend=y+nudge_y))+
+	geom_text(
+		data = annotation_df %>% filter(product=="Overall"),
+		mapping = aes(x=start, y=y+nudge_y_text, label=sig_label),
+		nudge_x=0.5)+
+	facet_grid(cols=vars(product), rows = vars(passage), scales="free_x")+ 
+	# scale_fill_jco(name="Diversity")+
+	scale_fill_manual(name="Diversity", values = color_t, labels=label_t)+
+	theme_bw()+
+	xlab("Gene")+
+	ylab("Nucleotide diversity")+
+	theme(legend.title = element_blank())+
+	NULL
+
+ggsave("../results/diversity_full_genome.pdf", width=6, height=6)
+save_pptx("../results/diversity_full_genome.pptx", width=6, height=6)
+
+# full genome 2
+df_tmp <- df_plot_all %>% filter(product=="Overall")
+annotation_df <- df_plot_all %>% filter(!is.na(sig_label_2)) %>% ungroup() %>% select(mean, sig_label_2, product, passage, group, name, type2) %>% unique()
+
+ggplot(df_tmp, aes(x=passage, y=mean, fill = name))+
+	geom_bar(stat="identity", position=position_dodge())+
+  	geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, position=position_dodge(.9))+
+	# geom_segment(
+	# 	data = annotation_df %>% filter(product=="Overall"),
+	# 	mapping = aes(x=start, xend=end, y=y+nudge_y, yend=y+nudge_y))+
+	geom_text(
+		data = annotation_df %>% filter(product=="Overall", name=="piN"),
+		mapping = aes(x=passage, y=mean+nudge_y_text, label=sig_label_2))+
+	facet_grid(cols=vars(product), rows = vars(type2), scales="free_x")+ 
+	# scale_fill_jco(name="Diversity")+
+	scale_fill_manual(name="Diversity", values = c('pink', 'lightblue'), labels=c(expression(pi[N]), expression(pi[S])))+
+	theme_bw()+
+	xlab("Passage")+
+	ylab("Nucleotide diversity")+
+	theme(legend.title = element_blank())+
+	NULL
+
+ggsave("../results/diversity_full_genome_piNpiS.pdf", width=6, height=6)
+save_pptx("../results/diversity_full_genome_piNpiS.pptx", width=6, height=6)
+
+# full genome 3
+df_tmp <- df_plot_all %>% filter(product=="Overall")
+df_stat_3 <- df_plot_all_raw %>% group_by(product, name, type2) %>% mutate(value=as.numeric(value)) %>%  summarise(p_value_p5vsp18 = t.test(value[passage=="P18"], value[passage=="P5"])$p.value)
+df_stat_3$sig_label_3 <- sapply(df_stat_3$p_value_p5vsp18, function(x){
+	if(is.na(x)){return(NA)}
+	if(x>0.05){return(NA)}
+	if(x<=0.05 & x>0.01){return("*")}
+	if(x<=0.01 & x>0.001){return("**")}
+	if(x<=0.001){return("***")}
+})
+annotation_df <- left_join(df_plot_all, df_stat_3) %>% filter(!is.na(sig_label_3)) %>% ungroup() %>% select(mean, sig_label_3, product, passage, group, name, type2) %>% unique()
+
+ggplot(df_tmp, aes(x=name, y=mean, fill = passage))+
+	geom_bar(stat="identity", position=position_dodge())+
+  	geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2, position=position_dodge(.9))+
+	# geom_segment(
+	# 	data = annotation_df %>% filter(product=="Overall"),
+	# 	mapping = aes(x=start, xend=end, y=y+nudge_y, yend=y+nudge_y))+
+	geom_text(
+		data = annotation_df %>% filter(product=="Overall", passage=="P18"),
+		mapping = aes(x=name, y=mean+nudge_y_text, label=sig_label_3))+
+	facet_grid(cols=vars(product), rows = vars(type2), scales="free_x")+ 
+	scale_fill_jco(name="Passage")+
+	# scale_fill_manual(name="Passage", values = c('pink', 'lightblue'), labels=c(expression(pi[N]), expression(pi[S])))+
+	theme_bw()+
+	xlab("Type")+
+	ylab("Nucleotide diversity")+
+	theme(legend.title = element_blank())+
+	NULL
+
+ggsave("../results/diversity_full_genome_passage.pdf", width=6, height=6)
+save_pptx("../results/diversity_full_genome_passage.pptx", width=6, height=6)
+
+write_xlsx(left_join(df_plot_all, df_stat_3), "../results/diversity_summary.xlsx")
+write_xlsx(df_plot_all_raw, "../results/diversity_raw.xlsx")
+
